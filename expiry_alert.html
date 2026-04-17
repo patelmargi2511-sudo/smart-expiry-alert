@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="theme-color" content="#b89a5a">
+<meta name="description" content="Smart Expiry Intelligence - Real-time expiration tracking with notifications">
+<title>EXPIRA — Smart Expiry Alert System</title>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="data:application/manifest+json,{%22name%22:%22EXPIRA%22,%22short_name%22:%22EXPIRA%22,%22display%22:%22standalone%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23b89a5a' width='192' height='192'/%3E%3Ctext x='50%25' y='50%25' font-size='100' fill='white' text-anchor='middle' dominant-baseline='central'%3E📦%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22}],%22theme_color%22:%22%23b89a5a%22,%22background_color%22:%22%23f5f2ec%22}">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0e0e0f;
+    --paper: #f5f2ec;
+    --cream: #ede9e0;
+    --gold: #b89a5a;
+    --gold-light: #d4b97a;
+    --gold-pale: #f0e8d0;
+    --rust: #c0392b;
+    --amber: #d4870d;
+    --sage: #4a6741;
+    --muted: #7a7469;
+    --border: #d8d2c4;
+    --card: #faf8f4;
+    --shadow: rgba(14,14,15,0.08);
+    --shadow-deep: rgba(14,14,15,0.18);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    opacity: 0.4;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    position: fixed; left: 0; top: 0; height: 100vh; width: 280px;
+    background: var(--card); border-right: 1px solid var(--border);
+    z-index: 200; transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow-y: auto; box-shadow: 2px 0 24px var(--shadow-deep);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-overlay {
+    position: fixed; inset: 0; z-index: 150;
+    background: rgba(14,14,15,0.35);
+    backdrop-filter: blur(6px);
+    display: none;
+  }
+  .sidebar-overlay.open { display: block; }
+
+  .sidebar-header {
+    padding: 1.75rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sidebar-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.4rem; font-weight: 400;
+    color: var(--ink);
+  }
+  .sidebar-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.2rem; color: var(--muted);
+    transition: color 0.2s;
+  }
+  .sidebar-close:hover { color: var(--ink); }
+
+  .sidebar-content {
+    padding: 1.5rem 0;
+  }
+
+  .sidebar-section {
+    padding: 0 1.5rem; margin-bottom: 1.75rem;
+  }
+  .sidebar-section:last-child { margin-bottom: 0; }
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .sidebar-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1rem; margin-bottom: 0.5rem;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer; transition: all 0.2s;
+    font-size: 0.85rem; color: var(--ink);
+    font-family: 'Outfit', sans-serif;
+  }
+  .sidebar-item:hover {
+    background: var(--cream);
+    border-color: var(--gold);
+  }
+
+  .sidebar-item-icon {
+    font-size: 1rem; min-width: 1.2rem;
+  }
+
+  .mode-toggle {
+    display: flex; gap: 0.25rem;
+    background: var(--paper); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px;
+  }
+  .mode-btn {
+    flex: 1; padding: 0.5rem; border: none; background: none;
+    border-radius: 3px; cursor: pointer; font-size: 0.75rem;
+    font-family: 'DM Mono', monospace; letter-spacing: 0.06em;
+    color: var(--muted); transition: all 0.2s;
+  }
+  .mode-btn.active {
+    background: var(--ink); color: var(--paper);
+  }
+  .mode-btn:hover { color: var(--ink); }
+
+  .language-select {
+    width: 100%; padding: 0.6rem 0.8rem;
+    background: var(--paper); border: 1px solid var(--border);
+    border-radius: 4px; font-family: 'Outfit', sans-serif;
+    font-size: 0.85rem; color: var(--ink);
+    cursor: pointer; outline: none;
+  }
+  .language-select:hover { border-color: var(--gold); }
+
+  .logout-btn {
+    width: 100%; padding: 0.8rem 1rem;
+    background: rgba(192,57,43,0.1);
+    border: 1px solid rgba(192,57,43,0.3);
+    color: var(--rust);
+    border-radius: 4px;
+    font-family: 'Outfit', sans-serif; font-size: 0.85rem;
+    font-weight: 500; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .logout-btn:hover {
+    background: rgba(192,57,43,0.2);
+    border-color: var(--rust);
+  }
+
+  /* ── Profile Button ── */
+  .profile-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer; transition: all 0.2s;
+    font-size: 1.1rem;
+  }
+  .profile-btn:hover { background: var(--gold-pale); border-color: var(--gold); }
+
+  /* ── Header ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(245,242,236,0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+
+  .logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--ink);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--gold); }
+
+  .header-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    display: flex; gap: 1.5rem; align-items: center;
+  }
+  .header-meta .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--sage);
+    box-shadow: 0 0 0 3px rgba(74,103,65,0.18);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── Layout ── */
+  .page { max-width: 1280px; margin: 0 auto; padding: 2.5rem 2.5rem 5rem; }
+
+  /* ── Hero Stats ── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.5rem 1.75rem;
+    position: relative; overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px var(--shadow-deep); }
+  .stat-card::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .stat-card:hover::after { opacity: 1; }
+
+  .stat-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 0.6rem;
+  }
+  .stat-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.8rem; font-weight: 300; line-height: 1;
+    color: var(--ink);
+  }
+  .stat-num.danger { color: var(--rust); }
+  .stat-num.warn   { color: var(--amber); }
+  .stat-num.safe   { color: var(--sage); }
+  .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; font-weight: 300; }
+
+  .stat-card .stat-icon {
+    position: absolute; right: 1.5rem; top: 1.5rem;
+    font-size: 1.3rem; opacity: 0.15;
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1.75rem; flex-wrap: wrap;
+  }
+
+  .search-wrap {
+    flex: 1; min-width: 220px; position: relative;
+  }
+  .search-wrap input {
+    width: 100%; padding: 0.65rem 1rem 0.65rem 2.6rem;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 3px; font-family: 'Outfit', sans-serif;
+    font-size: 0.85rem; color: var(--ink);
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-wrap input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(184,154,90,0.12);
+  }
+  .search-wrap .s-icon {
+    position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 0.9rem; pointer-events: none;
+  }
+
+  .filter-tabs {
+    display: flex; gap: 0.25rem;
+    background: var(--cream); border: 1px solid var(--border);
+    border-radius: 3px; padding: 3px;
+  }
+  .filter-tab {
+    padding: 0.45rem 1rem; border: none; background: none;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); cursor: pointer;
+    border-radius: 2px; transition: all 0.18s;
+  }
+  .filter-tab.active {
+    background: var(--ink); color: var(--paper);
+  }
+
+  .sort-sel {
+    padding: 0.65rem 0.9rem; background: var(--card);
+    border: 1px solid var(--border); border-radius: 3px;
+    font-family: 'Outfit', sans-serif; font-size: 0.82rem;
+    color: var(--ink); outline: none; cursor: pointer;
+  }
+
+  .btn-primary {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.65rem 1.4rem;
+    background: var(--ink); color: var(--paper);
+    border: none; border-radius: 3px;
+    font-family: 'Outfit', sans-serif; font-size: 0.82rem;
+    font-weight: 500; cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    white-space: nowrap;
+  }
+  .btn-primary:hover { background: #1d1d20; transform: translateY(-1px); box-shadow: 0 4px 16px var(--shadow-deep); }
+
+  /* ── Table / Cards ── */
+  .items-grid {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+
+  .item-row {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: grid;
+    grid-template-columns: 2.5rem 1fr 140px 140px 110px 110px 80px;
+    align-items: center;
+    gap: 0; padding: 0;
+    overflow: hidden;
+    transition: box-shadow 0.2s, transform 0.18s;
+    animation: slideIn 0.3s ease both;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  .item-row:hover { box-shadow: 0 4px 20px var(--shadow-deep); transform: translateY(-1px); }
+
+  .item-row.expired  { border-left: 3px solid var(--rust); }
+  .item-row.critical { border-left: 3px solid var(--amber); }
+  .item-row.safe     { border-left: 3px solid var(--sage); }
+  .item-row.header-row {
+    background: var(--cream); animation: none;
+    border-left: 3px solid transparent;
+    cursor: default;
+  }
+  .item-row:hover.header-row { transform: none; box-shadow: none; }
+
+  .cell {
+    padding: 1rem 1.1rem;
+    font-size: 0.82rem;
+    border-right: 1px solid var(--border);
+    height: 100%; display: flex; align-items: center;
+  }
+  .cell:last-child { border-right: none; justify-content: center; }
+
+  .cell-hdr {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    font-weight: 400;
+  }
+
+  .item-color {
+    width: 2.5rem; height: 100%; min-height: 58px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+  }
+  .item-row.expired  .item-color { background: rgba(192,57,43,0.1); }
+  .item-row.critical .item-color { background: rgba(212,135,13,0.1); }
+  .item-row.safe     .item-color { background: rgba(74,103,65,0.08); }
+
+  .item-name { font-weight: 500; color: var(--ink); }
+  .item-cat  { font-size: 0.7rem; color: var(--muted); margin-top: 2px; font-family: 'DM Mono', monospace; letter-spacing: 0.06em; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px;
+    font-family: 'DM Mono', monospace; font-size: 0.66rem;
+    font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .badge.expired  { background: rgba(192,57,43,0.1);  color: var(--rust); }
+  .badge.critical { background: rgba(212,135,13,0.1); color: var(--amber); }
+  .badge.safe     { background: rgba(74,103,65,0.08); color: var(--sage); }
+  .badge.expiring { background: rgba(212,135,13,0.08); color: #b07000; }
+
+  .days-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.35rem; font-weight: 400;
+  }
+  .days-num.neg  { color: var(--rust); }
+  .days-num.warn { color: var(--amber); }
+  .days-num.ok   { color: var(--sage); }
+
+  .action-btn {
+    background: none; border: 1px solid var(--border);
+    padding: 5px 10px; border-radius: 2px;
+    font-size: 0.7rem; font-family: 'DM Mono', monospace;
+    cursor: pointer; color: var(--muted);
+    transition: all 0.15s; letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .action-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .del-btn { color: var(--rust); border-color: transparent; }
+  .del-btn:hover { border-color: var(--rust); background: rgba(192,57,43,0.06); }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(14,14,15,0.55);
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+    padding: 2rem;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 100%; max-width: 520px;
+    box-shadow: 0 32px 80px rgba(14,14,15,0.35);
+    animation: modalIn 0.28s cubic-bezier(0.16,1,0.3,1);
+    overflow: hidden;
+  }
+  @keyframes modalIn { from{opacity:0;transform:scale(0.95) translateY(16px)} to{opacity:1;transform:none} }
+
+  .modal-head {
+    padding: 1.8rem 2rem 1.4rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .modal-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.55rem; font-weight: 400; letter-spacing: 0.02em;
+  }
+  .modal-sub { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+  .modal-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.2rem; color: var(--muted); line-height: 1;
+    transition: color 0.15s;
+  }
+  .modal-close:hover { color: var(--ink); }
+
+  .modal-body { padding: 1.75rem 2rem; }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.1rem; }
+  .form-row.single { grid-template-columns: 1fr; }
+
+  .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+  .form-label {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+  .form-input, .form-select, .form-textarea {
+    padding: 0.65rem 0.85rem;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 3px; font-family: 'Outfit', sans-serif;
+    font-size: 0.85rem; color: var(--ink); outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-textarea { resize: vertical; min-height: 70px; }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(184,154,90,0.12);
+  }
+
+  .modal-foot {
+    padding: 1.25rem 2rem 1.75rem;
+    display: flex; justify-content: flex-end; gap: 0.75rem;
+  }
+  .btn-ghost {
+    padding: 0.6rem 1.2rem; border: 1px solid var(--border);
+    background: none; border-radius: 3px;
+    font-family: 'Outfit', sans-serif; font-size: 0.82rem;
+    color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+
+  /* ── Progress Bar for days ── */
+  .progress-wrap { width: 100%; height: 3px; background: var(--cream); border-radius: 2px; margin-top: 4px; }
+  .progress-bar { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+  .progress-bar.ok   { background: var(--sage); }
+  .progress-bar.warn { background: var(--amber); }
+  .progress-bar.bad  { background: var(--rust); }
+
+  /* ── Notification Toast ── */
+  .toast-zone { position: fixed; bottom: 2rem; right: 2rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.6rem; }
+  .toast {
+    background: var(--ink); color: var(--paper);
+    padding: 0.85rem 1.3rem; border-radius: 4px;
+    font-size: 0.82rem; font-weight: 400;
+    box-shadow: 0 8px 32px rgba(14,14,15,0.3);
+    animation: toastIn 0.3s cubic-bezier(0.16,1,0.3,1);
+    display: flex; align-items: center; gap: 0.6rem;
+    min-width: 240px;
+  }
+  @keyframes toastIn { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:none} }
+  .toast.success { 
+    border-left: 3px solid #22c55e;
+    background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+    color: white;
+    font-weight: 500;
+    box-shadow: 0 12px 40px rgba(34,197,94,0.4);
+  }
+  .toast.error   { border-left: 3px solid var(--rust); }
+
+  /* ── Calendar strip ── */
+  .calendar-strip {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1.25rem 1.75rem;
+    margin-bottom: 1.75rem;
+  }
+  .cal-title {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--muted); margin-bottom: 1rem;
+  }
+  .cal-days { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 4px; }
+  .cal-day {
+    min-width: 52px; display: flex; flex-direction: column;
+    align-items: center; gap: 4px;
+    padding: 0.6rem 0.4rem; border-radius: 3px;
+    border: 1px solid transparent; cursor: default;
+    transition: all 0.15s;
+  }
+  .cal-day.has-event { border-color: var(--border); background: var(--cream); }
+  .cal-day.today { border-color: var(--gold); background: var(--gold-pale); }
+  .cal-day-name {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+  }
+  .cal-day-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.2rem; font-weight: 400; color: var(--ink);
+  }
+  .cal-dot-row { display: flex; gap: 2px; }
+  .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  /* ── Empty State ── */
+  .empty {
+    text-align: center; padding: 5rem 2rem;
+    color: var(--muted);
+  }
+  .empty-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.6rem; margin-bottom: 0.5rem;
+    color: var(--ink); font-weight: 300;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+    .item-row { grid-template-columns: 2.5rem 1fr 120px 100px 90px; }
+    .item-row .cell:nth-child(6), .item-row .cell:nth-child(7) { display: none; }
+  }
+  @media (max-width: 600px) {
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .item-row { grid-template-columns: 2.5rem 1fr 100px 70px; }
+    .item-row .cell:nth-child(4), .item-row .cell:nth-child(5),
+    .item-row .cell:nth-child(6), .item-row .cell:nth-child(7) { display: none; }
+    header { padding: 0 1.25rem; }
+    .page { padding: 1.25rem 1.25rem 4rem; }
+  }
+
+  /* ── Auth Page ── */
+  .auth-container {
+    position: fixed; inset: 0; z-index: 2000;
+    background: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem;
+  }
+  .auth-container.hidden { display: none; }
+
+  .auth-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 100%; max-width: 420px;
+    padding: 3rem 2.5rem;
+    box-shadow: 0 16px 64px var(--shadow-deep);
+  }
+
+  .auth-header {
+    text-align: center; margin-bottom: 2.5rem;
+  }
+  .auth-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2rem; font-weight: 400;
+    color: var(--ink); margin-bottom: 0.5rem;
+    letter-spacing: 0.02em;
+  }
+  .auth-title span { color: var(--gold); }
+  .auth-subtitle {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  .auth-form { display: flex; flex-direction: column; gap: 1.2rem; }
+
+  .auth-field {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .auth-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .auth-input {
+    padding: 0.85rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem; color: var(--ink);
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .auth-input::placeholder { color: var(--muted); }
+  .auth-input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(184,154,90,0.12);
+  }
+
+  .auth-button {
+    padding: 0.9rem 1.4rem;
+    background: var(--ink); color: var(--paper);
+    border: none; border-radius: 4px;
+    font-family: 'Outfit', sans-serif; font-size: 0.85rem;
+    font-weight: 500; letter-spacing: 0.04em;
+    cursor: pointer; transition: all 0.2s;
+    margin-top: 0.5rem;
+  }
+  .auth-button:hover { background: #1d1d20; transform: translateY(-1px); box-shadow: 0 4px 16px var(--shadow-deep); }
+
+  .auth-toggle {
+    text-align: center; margin-top: 1.5rem;
+    font-size: 0.82rem; color: var(--muted);
+  }
+  .auth-toggle-link {
+    color: var(--gold); cursor: pointer; font-weight: 500;
+    transition: color 0.2s;
+  }
+  .auth-toggle-link:hover { color: var(--gold-light); }
+
+  .auth-error {
+    padding: 0.75rem 1rem;
+    background: rgba(192,57,43,0.1);
+    border: 1px solid rgba(192,57,43,0.3);
+    border-radius: 4px;
+    color: var(--rust); font-size: 0.82rem;
+    margin-bottom: 1rem; display: none;
+  }
+  .auth-error.show { display: block; animation: slideIn 0.3s ease; }
+</style>
+</head>
+<body>
+<div id="auth-page" class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-title">Exp<span>i</span>ra</div>
+      <div class="auth-subtitle" id="auth-mode-label">Login to your account</div>
+    </div>
+    
+    <div id="auth-error" class="auth-error"></div>
+
+    <form class="auth-form" onsubmit="handleAuth(event)">
+      <!-- Visible during registration only -->
+      <div class="auth-field" id="reg-name-field" style="display:none;">
+        <label class="auth-label">Full Name</label>
+        <input class="auth-input" id="auth-full-name" name="fullName" placeholder="Enter your full name">
+      </div>
+
+      <!-- Visible during registration only -->
+      <div class="auth-field" id="reg-username-field" style="display:none;">
+        <label class="auth-label">Username</label>
+        <input class="auth-input" id="auth-username" name="username" placeholder="Choose a username">
+      </div>
+
+      <!-- Visible during login only -->
+      <div class="auth-field" id="login-username-field">
+        <label class="auth-label">Username</label>
+        <input class="auth-input" id="auth-login-user" name="loginUsername" placeholder="Enter your username">
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label">Password</label>
+        <input class="auth-input" id="auth-pass" name="password" type="password" placeholder="Enter password">
+      </div>
+
+      <button type="submit" class="auth-button" id="auth-btn-text">Login</button>
+    </form>
+
+    <div class="auth-toggle">
+      <span id="auth-toggle-text">Don't have an account? </span>
+      <span class="auth-toggle-link" id="auth-toggle-link" onclick="toggleAuth()">Register</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Sidebar ─── -->
+<div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+<div id="sidebar" class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-title">Menu</div>
+    <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+  </div>
+  
+  <div class="sidebar-content">
+    <!-- Profile Section -->
+    <div class="sidebar-section">
+      <div class="section-label">Account</div>
+      <div style="padding: 1rem; text-align: center; background: var(--paper); border-radius: 4px; margin-bottom: 0.75rem;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">👤</div>
+        <div style="font-weight: 500; color: var(--ink);" id="sidebar-username">User</div>
+      </div>
+    </div>
+
+    <!-- Theme Section -->
+    <div class="sidebar-section">
+      <div class="section-label">Theme</div>
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-theme="light" onclick="setTheme('light')">Light</button>
+        <button class="mode-btn" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+      </div>
+    </div>
+
+    <!-- Language Section -->
+    <div class="sidebar-section">
+      <div class="section-label">Language</div>
+      <select class="language-select" id="language-select" onchange="setLanguage(this.value)">
+        <option value="en">🇬🇧 English</option>
+        <option value="hi">🇮🇳 हिंदी</option>
+        <option value="es">🇪🇸 Español</option>
+        <option value="fr">🇫🇷 Français</option>
+      </select>
+    </div>
+
+    <!-- Help Section -->
+    <div class="sidebar-section">
+      <div class="section-label">Help</div>
+      <div class="sidebar-item" onclick="showHelp()">
+        <span class="sidebar-item-icon">❓</span>
+        <span>Help & Support</span>
+      </div>
+      <div class="sidebar-item" onclick="testNotification()">
+        <span class="sidebar-item-icon">🔔</span>
+        <span>Test Notification</span>
+      </div>
+      <div class="sidebar-item" onclick="showAbout()">
+        <span class="sidebar-item-icon">ℹ️</span>
+        <span>About Expira</span>
+      </div>
+    </div>
+
+    <!-- Logout Section -->
+    <div class="sidebar-section">
+      <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Header ─── -->
+<header>
+  <div style="display: flex; align-items: center; gap: 1rem;">
+    <button class="profile-btn" onclick="toggleSidebar()" id="profile-btn">👤</button>
+    <div class="logo">Exp<span>i</span>ra</div>
+  </div>
+  <div class="header-meta">
+    <div class="live-dot"></div>
+    <span id="hdr-time">—</span>
+    <span id="welcome-user"></span>
+    <span id="hdr-count">0 items tracked</span>
+  </div>
+</header>
+
+<!-- ─── Page ─── -->
+<div class="page" style="display:none;">
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <div class="stat-icon">📦</div>
+      <div class="stat-label">Total Items</div>
+      <div class="stat-num" id="s-total">0</div>
+      <div class="stat-sub">across all categories</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🔴</div>
+      <div class="stat-label">Expired</div>
+      <div class="stat-num danger" id="s-expired">0</div>
+      <div class="stat-sub">require immediate action</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">⚠️</div>
+      <div class="stat-label">Expiring Soon</div>
+      <div class="stat-num warn" id="s-soon">0</div>
+      <div class="stat-sub">within 30 days</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Safe</div>
+      <div class="stat-num safe" id="s-safe">0</div>
+      <div class="stat-sub">well within date</div>
+    </div>
+  </div>
+
+  <!-- Calendar Strip -->
+  <div class="calendar-strip">
+    <div class="cal-title">Upcoming Expirations — Next 14 Days</div>
+    <div class="cal-days" id="cal-strip"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="s-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Search items, categories, notes…">
+    </div>
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-f="all">All</button>
+      <button class="filter-tab" data-f="expired">Expired</button>
+      <button class="filter-tab" data-f="critical">Critical</button>
+      <button class="filter-tab" data-f="safe">Safe</button>
+    </div>
+    <select class="sort-sel" id="sort-sel">
+      <option value="days">Sort: Days Left</option>
+      <option value="name">Sort: Name</option>
+      <option value="cat">Sort: Category</option>
+      <option value="added">Sort: Date Added</option>
+    </select>
+    <button class="btn-primary" onclick="openModal()">＋ Add Item</button>
+  </div>
+
+  <!-- Items list -->
+  <div class="items-grid" id="items-grid">
+    <!-- header row -->
+    <div class="item-row header-row">
+      <div class="item-color"></div>
+      <div class="cell cell-hdr">Item</div>
+      <div class="cell cell-hdr">Expiry Date</div>
+      <div class="cell cell-hdr">Days Left</div>
+      <div class="cell cell-hdr">Category</div>
+      <div class="cell cell-hdr">Status</div>
+      <div class="cell cell-hdr">Actions</div>
+    </div>
+  </div>
+
+  <div class="empty" id="empty-state" style="display:none">
+    <div class="empty-title">No items found.</div>
+    <p style="font-size:.82rem;margin-top:.4rem">Add your first item or adjust filters.</p>
+  </div>
+
+</div>
+
+<!-- ─── Add / Edit Modal ─── -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modal-title">New Item</div>
+        <div class="modal-sub">Track an expiry date</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Item Name *</label>
+          <input class="form-input" id="f-name" placeholder="e.g. Milk, Passport…">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select class="form-select" id="f-cat">
+            <option value="Food">🥗 Food</option>
+            <option value="Medicine">💊 Medicine</option>
+            <option value="Document">📄 Document</option>
+            <option value="Cosmetic">🧴 Cosmetic</option>
+            <option value="Finance">💳 Finance</option>
+            <option value="Electronics">🔋 Electronics</option>
+            <option value="Other">📦 Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Expiry Date *</label>
+          <input class="form-input" id="f-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Alert Before (days)</label>
+          <input class="form-input" id="f-alert" type="number" value="14" min="1" max="365">
+        </div>
+      </div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label class="form-label">Notes</label>
+          <textarea class="form-textarea" id="f-notes" placeholder="Optional notes…"></textarea>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Emoji / Icon</label>
+          <input class="form-input" id="f-emoji" placeholder="🥛" maxlength="4">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quantity</label>
+          <input class="form-input" id="f-qty" type="number" value="1" min="1">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast ─── -->
+<div class="toast-zone" id="toast-zone"></div>
+
+<script>
+// ── Data ──────────────────────────────────────────────
+let currentUser = null;
+let items = [];
+
+function getStorageKey() {
+  const username = localStorage.getItem('loggedUsername');
+  return `expira_items_${username}`;
+}
+
+function loadUserItems() {
+  const username = localStorage.getItem('loggedUsername');
+  if (username) {
+    const key = getStorageKey();
+    items = JSON.parse(localStorage.getItem(key) || '[]');
+  } else {
+    items = [];
+  }
+}
+
+let editingId = null;
+let activeFilter = 'all';
+let searchQuery = '';
+let sortBy = 'days';
+
+function uid() { return Math.random().toString(36).slice(2,10); }
+function save() { 
+  if (localStorage.getItem('loggedUsername')) {
+    localStorage.setItem(getStorageKey(), JSON.stringify(items));
+  }
+}
+
+// ── Calculations ──────────────────────────────────────
+function daysLeft(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(dateStr); exp.setHours(0,0,0,0);
+  return Math.round((exp - today) / 86400000);
+}
+
+function statusOf(item) {
+  const d = daysLeft(item.date);
+  if (d < 0) return 'expired';
+  if (d <= item.alert) return 'critical';
+  return 'safe';
+}
+
+function catEmoji(cat) {
+  const map = { Food:'🥗', Medicine:'💊', Document:'📄', Cosmetic:'🧴', Finance:'💳', Electronics:'🔋', Other:'📦' };
+  return map[cat] || '📦';
+}
+// ── Render ────────────────────────────────────────────
+function render() {
+  updateStats();
+  renderCalendar();
+  renderList();
+  updateHeader();
+}
+
+function updateStats() {
+  const total = items.length;
+  const expired  = items.filter(i => statusOf(i) === 'expired').length;
+  const critical = items.filter(i => statusOf(i) === 'critical').length;
+  const safe     = items.filter(i => statusOf(i) === 'safe').length;
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-expired').textContent = expired;
+  document.getElementById('s-soon').textContent = critical;
+  document.getElementById('s-safe').textContent = safe;
+}
+
+function updateHeader() {
+  document.getElementById('hdr-count').textContent = `${items.length} item${items.length!==1?'s':''} tracked`;
+}
+
+function renderCalendar() {
+  const strip = document.getElementById('cal-strip');
+  strip.innerHTML = '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const ds = d.toISOString().split('T')[0];
+    const dayItems = items.filter(it => it.date === ds);
+    const div = document.createElement('div');
+    div.className = 'cal-day' + (i===0?' today':'') + (dayItems.length?' has-event':'');
+    const days = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+    div.innerHTML = `
+      <div class="cal-day-name">${days[d.getDay()]}</div>
+      <div class="cal-day-num">${d.getDate()}</div>
+      <div class="cal-dot-row">
+        ${dayItems.map(it => {
+          const s = statusOf(it);
+          const col = s==='expired'?'#c0392b': s==='critical'?'#d4870d':'#4a6741';
+          return `<div class="cal-dot" style="background:${col}" title="${it.name}"></div>`;
+        }).join('')}
+      </div>`;
+    strip.appendChild(div);
+  }
+}
+
+function renderList() {
+  const grid = document.getElementById('items-grid');
+  // Remove all rows except header
+  while (grid.children.length > 1) grid.removeChild(grid.lastChild);
+
+  let filtered = items.filter(item => {
+    if (activeFilter === 'expired'  && statusOf(item) !== 'expired')  return false;
+    if (activeFilter === 'critical' && statusOf(item) !== 'critical') return false;
+    if (activeFilter === 'safe'     && statusOf(item) !== 'safe')     return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return item.name.toLowerCase().includes(q) ||
+             item.cat.toLowerCase().includes(q) ||
+             (item.notes||'').toLowerCase().includes(q);
+    }
+    return true;
+  });
+  // Sort
+  filtered.sort((a, b) => {
+    if (sortBy === 'days') return daysLeft(a.date) - daysLeft(b.date);
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    if (sortBy === 'cat')  return a.cat.localeCompare(b.cat);
+    if (sortBy === 'added') return b.added - a.added;
+    return 0;
+  });
+
+  document.getElementById('empty-state').style.display = filtered.length ? 'none' : 'block';
+
+  filtered.forEach((item, idx) => {
+    const d = daysLeft(item.date);
+    const st = statusOf(item);
+    const dClass = d < 0 ? 'neg' : d <= item.alert ? 'warn' : 'ok';
+    const dLabel = d < 0 ? `${Math.abs(d)}d ago` : d === 0 ? 'Today' : `${d}d`;
+    const prog = Math.max(0, Math.min(100, d < 0 ? 0 : Math.min(d, 365) / 365 * 100));
+    const progClass = d < 0 ? 'bad' : d <= item.alert ? 'warn' : 'ok';
+    const badgeMap = { expired:'expired', critical:'critical', safe:'safe' };
+    const badgeLabel = st === 'expired' ? 'Expired' : st === 'critical' ? 'Critical' : 'Safe';
+
+    const row = document.createElement('div');
+    row.className = `item-row ${st}`;
+    row.style.animationDelay = `${idx * 0.04}s`;
+    row.innerHTML = `
+      <div class="item-color">${item.emoji || catEmoji(item.cat)}</div>
+      <div class="cell">
+        <div>
+          <div class="item-name">${escHtml(item.name)}${item.qty > 1 ? ` <span style="font-size:.72rem;color:var(--muted);font-family:'DM Mono',monospace">×${item.qty}</span>` : ''}</div>
+          <div class="item-cat">${escHtml(item.cat)}${item.notes ? ' · ' + escHtml(item.notes.slice(0,35)) + (item.notes.length>35?'…':'') : ''}</div>
+        </div>
+      </div>
+      <div class="cell">
+        <div>
+          <div style="font-size:.82rem;">${fmtDate(item.date)}</div>
+          <div class="progress-wrap"><div class="progress-bar ${progClass}" style="width:${prog}%"></div></div>
+        </div>
+      </div>
+      <div class="cell">
+        <div class="days-num ${dClass}">${dLabel}</div>
+      </div>
+      <div class="cell"><span class="badge ${badgeMap[st]}">${badgeLabel}</span></div>
+      <div class="cell">
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+          <button class="action-btn" onclick="editItem('${item.id}')">Edit</button>
+          <button class="action-btn del-btn" onclick="deleteItem('${item.id}')">Del</button>
+        </div>
+      </div>
+    `;
+    grid.appendChild(row);
+  });
+}
+
+function fmtDate(ds) {
+  const d = new Date(ds + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+// ── Modal ─────────────────────────────────────────────
+function openModal(item) {
+  editingId = item ? item.id : null;
+  document.getElementById('modal-title').textContent = item ? 'Edit Item' : 'New Item';
+  document.getElementById('f-name').value  = item ? item.name  : '';
+  document.getElementById('f-cat').value   = item ? item.cat   : 'Food';
+  document.getElementById('f-date').value  = item ? item.date  : '';
+  document.getElementById('f-alert').value = item ? item.alert : 14;
+  document.getElementById('f-notes').value = item ? item.notes : '';
+  document.getElementById('f-emoji').value = item ? item.emoji : '';
+  document.getElementById('f-qty').value   = item ? item.qty   : 1;
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('f-name').focus();
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+function saveItem() {
+  const name  = document.getElementById('f-name').value.trim();
+  const date  = document.getElementById('f-date').value;
+  if (!name) { toast('Please enter a name.','error'); return; }
+  if (!date) { toast('Please pick an expiry date.','error'); return; }
+
+  const payload = {
+    id: editingId || uid(),
+    name,
+    cat:   document.getElementById('f-cat').value,
+    date,
+    alert: parseInt(document.getElementById('f-alert').value) || 14,
+    notes: document.getElementById('f-notes').value.trim(),
+    emoji: document.getElementById('f-emoji').value.trim(),
+    qty:   parseInt(document.getElementById('f-qty').value) || 1,
+    added: editingId ? (items.find(i=>i.id===editingId)||{}).added || Date.now() : Date.now(),
+  };
+
+  if (editingId) {
+    const idx = items.findIndex(i => i.id === editingId);
+    items[idx] = payload;
+    toast('Item updated successfully.','success');
+  } else {
+    items.push(payload);
+    toast(`"${name}" added.`,'success');
+    // Send notification for new item
+    sendNotification(`✅ Item Added: ${name}`, {
+      body: `Expires on ${fmtDate(date)}`,
+      tag: `new_${payload.id}`
+    });
+  }
+  save(); closeModal(); render();
+}
+
+function editItem(id) { openModal(items.find(i => i.id === id)); }
+function deleteItem(id) {
+  const it = items.find(i => i.id === id);
+  items = items.filter(i => i.id !== id);
+  save(); render();
+  toast(`"${it.name}" removed.`,'success');
+}
+
+// ── Toast ─────────────────────────────────────────────
+function toast(msg, type='success') {
+  const zone = document.getElementById('toast-zone');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `${type==='success'?'✓':'✕'} ${msg}`;
+  zone.appendChild(el);
+  setTimeout(() => el.style.opacity='0', 2500);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Notifications ────────────────────────────────────
+function requestNotificationPermission() {
+  console.log('requestNotificationPermission called');
+  
+  if (!('Notification' in window)) {
+    console.warn('Notifications not supported by this browser');
+    return;
+  }
+  
+  console.log('Current permission:', Notification.permission);
+  
+  if (Notification.permission === 'granted') {
+    console.log('Notification permission already granted');
+    return;
+  }
+  
+  if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(permission => {
+      console.log('Permission result:', permission);
+      if (permission === 'granted') {
+        console.log('✓ Notification permission granted!');
+        toast('🔔 Notifications enabled!', 'success');
+      } else if (permission === 'denied') {
+        console.log('✗ Notification permission denied');
+        toast('🔔 Notifications blocked - check browser settings', 'error');
+      }
+    }).catch(err => {
+      console.error('Permission request error:', err);
+    });
+  } else {
+    console.log('Notification permission previously denied');
+  }
+}
+
+function sendNotification(title, options = {}) {
+  console.log('sendNotification called:', title);
+  
+  if (!('Notification' in window)) {
+    console.warn('Notifications not supported');
+    toast(title, 'success');
+    return;
+  }
+  
+  console.log('Permission status:', Notification.permission);
+  
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(title, {
+        icon: '📦',
+        badge: '📦',
+        tag: 'expira-alert',
+        requireInteraction: true,
+        ...options
+      });
+      console.log('✓ Notification sent successfully');
+    } catch (err) {
+      console.error('Notification creation error:', err);
+      toast(title, 'success');
+    }
+  } else {
+    console.log('Cannot send notification - permission not granted');
+    toast(title, 'success');
+  }
+}
+
+let notifiedItems = new Set();
+
+function checkAndNotifyExpirations() {
+  if (!localStorage.getItem('loggedUsername')) return;
+  
+  console.log('Checking expirations for', items.length, 'items');
+  
+  items.forEach(item => {
+    const d = daysLeft(item.date);
+    const st = statusOf(item);
+    const notifKey = `${item.id}_${d}`;
+    
+    console.log(`Item: ${item.name}, Status: ${st}, Days: ${d}`);
+    
+    // Notify only once per state change
+    if (!notifiedItems.has(notifKey)) {
+      if (st === 'expired' && d < 0) {
+        console.log('Sending EXPIRED notification for:', item.name);
+        sendNotification(`⚠️ EXPIRED: ${item.name}`, {
+          body: `${item.name} is ${Math.abs(d)} days overdue!`,
+          tag: `expired_${item.id}`
+        });
+        notifiedItems.add(notifKey);
+      } else if (st === 'critical' && d <= item.alert) {
+        console.log('Sending CRITICAL notification for:', item.name);
+        sendNotification(`🔴 CRITICAL: ${item.name}`, {
+          body: `${item.name} expires in ${d} days!`,
+          tag: `critical_${item.id}`
+        });
+        notifiedItems.add(notifKey);
+      }
+    }
+  });
+}
+
+// ── Clock ─────────────────────────────────────────────
+function tickClock() {
+  const now = new Date();
+  document.getElementById('hdr-time').textContent =
+    now.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) + ' · ' +
+    now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+tickClock(); setInterval(tickClock, 30000);
+
+// Check for expirations every 5 minutes
+setInterval(checkAndNotifyExpirations, 5 * 60 * 1000);
+
+// ── FCM (Firebase Cloud Messaging) ──────────────────
+let fcmToken = null;
+
+function initializeFirebase() {
+  console.log('Initializing Firebase Cloud Messaging...');
+  
+  if (!('Notification' in window)) {
+    console.log('⚠️  Browser does not support notifications');
+    return;
+  }
+
+  // Request permission if not already granted
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        console.log('✓ Notification permission granted');
+        getFCMToken();
+      }
+    });
+  } else if (Notification.permission === 'granted') {
+    getFCMToken();
+  }
+}
+
+function getFCMToken() {
+  const username = localStorage.getItem('loggedUsername');
+  
+  if (username) {
+    // Create a pseudo-token based on browser notifications support
+    const pseudoToken = btoa(`fcm_${username}_${Date.now()}`);
+    fcmToken = pseudoToken;
+    
+    // Send to server - use username as userId for this app
+    sendFCMTokenToServer(username, pseudoToken);
+  }
+}
+
+function sendFCMTokenToServer(userId, token) {
+  fetch('/api/users/fcm-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, fcmToken: token })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        console.log('✅ FCM Token registered successfully');
+      }
+    })
+    .catch(err => {
+      console.log('ℹ️  Backend notification support: Check if firebase-service-account.json is configured');
+    });
+}
+
+// ── Notifications ────────────────────────────────
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQuery = e.target.value; renderList();
+});
+document.getElementById('sort-sel').addEventListener('change', e => {
+  sortBy = e.target.value; renderList();
+});
+document.querySelectorAll('.filter-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.f;
+    renderList();
+  });
+});
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Init ──────────────────────────────────────────────
+let isLogin = true;
+
+function toggleAuth() {
+  isLogin = !isLogin;
+  console.log('toggleAuth called, isLogin is now:', isLogin);
+  
+  const modeLabel = document.getElementById('auth-mode-label');
+  const btnText = document.getElementById('auth-btn-text');
+  const toggleText = document.getElementById('auth-toggle-text');
+  const toggleLink = document.getElementById('auth-toggle-link');
+  const regNameField = document.getElementById('reg-name-field');
+  const regUsernameField = document.getElementById('reg-username-field');
+  const loginUsernameField = document.getElementById('login-username-field');
+
+  if (isLogin) {
+    modeLabel.textContent = 'Login to your account';
+    btnText.textContent = 'Login';
+    toggleText.textContent = "Don't have an account? ";
+    toggleLink.textContent = 'Register';
+    regNameField.style.display = 'none';
+    regUsernameField.style.display = 'none';
+    loginUsernameField.style.display = 'flex';
+  } else {
+    modeLabel.textContent = 'Create a new account';
+    btnText.textContent = 'Register';
+    toggleText.textContent = 'Already have an account? ';
+    toggleLink.textContent = 'Go to Login';
+    regNameField.style.display = 'flex';
+    regUsernameField.style.display = 'flex';
+    loginUsernameField.style.display = 'none';
+  }
+  
+  // Clear all fields
+  document.getElementById('auth-full-name').value = '';
+  document.getElementById('auth-username').value = '';
+  document.getElementById('auth-login-user').value = '';
+  document.getElementById('auth-pass').value = '';
+  clearError();
+  
+  // Log for debugging
+  console.log('Register fields display:', regNameField.style.display, regUsernameField.style.display);
+}
+
+function showError(msg) {
+  const errorEl = document.getElementById('auth-error');
+  errorEl.textContent = msg;
+  errorEl.classList.add('show');
+}
+
+function clearError() {
+  const errorEl = document.getElementById('auth-error');
+  errorEl.classList.remove('show');
+}
+
+function handleAuth(event) {
+  event.preventDefault();
+  clearError();
+  console.log('handleAuth called, isLogin:', isLogin);
+
+  if (isLogin) {
+    // LOGIN MODE
+    const username = document.getElementById('auth-login-user').value.trim();
+    const pass = document.getElementById('auth-pass').value;
+
+    if (!username || !pass) {
+      showError('Please fill all fields');
+      return;
+    }
+
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const user = users.find(u => u.username === username && u.pass === pass);
+    
+    if (user) {
+      localStorage.setItem('loggedUser', user.fullName);
+      localStorage.setItem('loggedUsername', username);
+      toast('✓ Login successful!', 'success');
+      setTimeout(() => startApp(), 800);
+    } else {
+      showError('Invalid username or password');
+    }
+  } else {
+    // REGISTRATION MODE
+    console.log('Starting registration process');
+    const fullName = document.getElementById('auth-full-name').value.trim();
+    const username = document.getElementById('auth-username').value.trim();
+    const pass = document.getElementById('auth-pass').value;
+
+    console.log('Form values:', { fullName, username, pass });
+
+    if (!fullName || !username || !pass) {
+      showError('❌ Please fill all fields (Name, Username, Password)');
+      console.log('Validation failed: empty fields');
+      return;
+    }
+
+    if (fullName.length < 2) {
+      showError('❌ Name must be at least 2 characters');
+      return;
+    }
+
+    if (username.length < 3) {
+      showError('❌ Username must be at least 3 characters (e.g., john)');
+      return;
+    }
+
+    if (pass.length < 4) {
+      showError('❌ Password must be at least 4 characters');
+      return;
+    }
+
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    if (users.find(u => u.username === username)) {
+      showError('❌ Username already taken! Try a different one.');
+      return;
+    }
+
+    // Add new user to array
+    users.push({ fullName, username, pass });
+    localStorage.setItem('users', JSON.stringify(users));
+    console.log('User registered successfully:', username);
+    
+    toast('✓ Registration successful!', 'success');
+    setTimeout(() => {
+      toast('Now please login with your credentials', 'success');
+      setTimeout(() => {
+        isLogin = true;
+        toggleAuth();
+        document.getElementById('auth-full-name').value = '';
+        document.getElementById('auth-username').value = '';
+        document.getElementById('auth-login-user').value = '';
+        document.getElementById('auth-pass').value = '';
+      }, 800);
+    }, 1000);
+  }
+}
+
+function updateWelcome() {
+  const user = localStorage.getItem('loggedUser');
+  if (user) {
+    document.getElementById('welcome-user').textContent = `Hello, ${user}`;
+    document.getElementById('sidebar-username').textContent = user;
+  }
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+
+function closeSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.remove('open');
+  overlay.classList.remove('open');
+}
+
+function setTheme(theme) {
+  localStorage.setItem('theme', theme);
+  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelector(`[data-theme="${theme}"]`).classList.add('active');
+  
+  if (theme === 'dark') {
+    // Dark Mode - White text on dark background
+    document.documentElement.style.setProperty('--paper', '#1a1a1c');
+    document.documentElement.style.setProperty('--card', '#2d2d31');
+    document.documentElement.style.setProperty('--ink', '#ffffff');
+    document.documentElement.style.setProperty('--muted', '#b0b0b0');
+    document.documentElement.style.setProperty('--border', '#404040');
+    document.documentElement.style.setProperty('--cream', '#383838');
+    document.documentElement.style.setProperty('--shadow', 'rgba(0,0,0,0.3)');
+    document.documentElement.style.setProperty('--shadow-deep', 'rgba(0,0,0,0.5)');
+  } else {
+    // Light Mode - Black text on light background
+    document.documentElement.style.setProperty('--paper', '#f5f2ec');
+    document.documentElement.style.setProperty('--card', '#faf8f4');
+    document.documentElement.style.setProperty('--ink', '#000000');
+    document.documentElement.style.setProperty('--muted', '#7a7469');
+    document.documentElement.style.setProperty('--border', '#d8d2c4');
+    document.documentElement.style.setProperty('--cream', '#ede9e0');
+    document.documentElement.style.setProperty('--shadow', 'rgba(14,14,15,0.08)');
+    document.documentElement.style.setProperty('--shadow-deep', 'rgba(14,14,15,0.18)');
+  }
+  closeSidebar();
+  toast('Theme updated', 'success');
+}
+
+function setLanguage(lang) {
+  localStorage.setItem('language', lang);
+  // Language implementation can be added here
+  toast(`Language changed to ${lang.toUpperCase()}`, 'success');
+  closeSidebar();
+}
+
+function showHelp() {
+  toast('📖 Help & Support:\n\n• Add Items: Click "+ Add Item" button\n• Edit Items: Click Edit on any item\n• Delete Items: Click Del to remove\n• Search: Use search bar to find items\n• Filter: Use tabs to filter by status\n• Sort: Change sort order from dropdown', 'success');
+  closeSidebar();
+}
+
+function testNotification() {
+  closeSidebar();
+  console.log('Test notification triggered');
+  console.log('Notification support:', 'Notification' in window);
+  console.log('Permission status:', Notification?.permission || 'N/A');
+  
+  if (!('Notification' in window)) {
+    toast('❌ Notifications not supported in this browser', 'error');
+    return;
+  }
+  
+  if (Notification.permission === 'granted') {
+    sendNotification('🔔 TEST NOTIFICATION', {
+      body: 'This is a test notification from Expira!',
+      tag: 'test-notif'
+    });
+    toast('✓ Test notification sent! Check your system notifications.', 'success');
+  } else if (Notification.permission === 'denied') {
+    toast('❌ Notifications are blocked. Allow notifications in browser settings → Site settings → Permissions', 'error');
+  } else {
+    toast('⏳ Requesting notification permission...', 'success');
+    requestNotificationPermission();
+    setTimeout(() => {
+      if (Notification.permission === 'granted') {
+        sendNotification('🔔 TEST NOTIFICATION', {
+          body: 'This is a test notification from Expira!',
+          tag: 'test-notif'
+        });
+        toast('✓ Test notification sent!', 'success');
+      } else {
+        toast('⚠️ Please allow notifications when prompted', 'error');
+      }
+    }, 500);
+  }
+}
+
+function showAbout() {
+  toast('ℹ️ Expira - Expiry Intelligence\n\nVersion 1.0\n\nA smart expiry date tracker to manage your products efficiently.\n\n© 2026 All Rights Reserved', 'success');
+  closeSidebar();
+}
+
+function logout() {
+  if (confirm('Are you sure you want to logout?')) {
+    localStorage.removeItem('loggedUser');
+    localStorage.removeItem('loggedUsername');
+    closeSidebar();
+    location.reload();
+  }
+}
+
+function startApp() {
+  const authPage = document.getElementById('auth-page');
+  const mainPage = document.querySelector('.page');
+  const header = document.querySelector('header');
+  
+  loadUserItems();
+  requestNotificationPermission();
+  
+  authPage.classList.add('hidden');
+  mainPage.style.display = 'block';
+  header.style.display = 'block';
+  updateWelcome();
+  render();
+  
+  // Initialize Firebase/FCM
+  setTimeout(initializeFirebase, 500);
+  
+  // Check for expirations immediately on app start
+  setTimeout(checkAndNotifyExpirations, 1000);
+}
+
+window.onload = () => {
+  const user = localStorage.getItem('loggedUser');
+  const username = localStorage.getItem('loggedUsername');
+  const authPage = document.getElementById('auth-page');
+  const mainPage = document.querySelector('.page');
+  const header = document.querySelector('header');
+  
+  if (user && username) {
+    startApp();
+  } else {
+    // Show login page, hide main page and header
+    authPage.classList.remove('hidden');
+    mainPage.style.display = 'none';
+    header.style.display = 'none';
+  }
+  
+  // Load theme preference
+  const theme = localStorage.getItem('theme') || 'light';
+  if (theme === 'dark') {
+    setTheme('dark');
+  }
+};
+</script>
+</body>
+</html>
